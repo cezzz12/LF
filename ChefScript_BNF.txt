@@ -1,0 +1,289 @@
+==============================================================================
+ ChefScript - a small domain specific language for RECIPE COMPUTATION
+ BNF for the lexical and syntactic constructs         VERSION 1.2 (Lab 2)
+==============================================================================
+
+Domain      : cooking (scaling recipes, counting calories, salt checks, timers)
+Simple type : number  (integer)
+User type   : list of number [N]   (fixed-size one-dimensional array, N >= 1)
+Statements  : assignment, conditional (if/else), loops (for, while),
+              input (read), output (show)
+
+Notation    : <name>  = non-terminal
+              "text"  = terminal (keyword, operator or separator)
+              ::=     = "is defined as"
+              |       = alternative
+              Plain BNF: repetition is expressed by recursion (no { } [ ]).
+              The quoted tokens "[" "]" "{" "}" are literal characters.
+
+Version history
+  1.0  Initial grammar (Lab 1).
+  1.1  Changes after GenAI validation (see GenAI_Validation.md):
+       C1 <space>, <tab>, <newline> now defined.
+       C2 "..." ranges in <letter> replaced by explicit lists.
+       C3 string quote written as <dquote>; strings cannot contain newline.
+       C4 <identifier> now explicitly excludes <keyword>.
+       C5 array size must be >= 1 (<positive_const>).
+       C6 <assign_op> used in <assign_stmt>; unused <arith_op> and
+          <separator> removed (token list given in A.5 instead).
+       C7 <comment> formalised.
+       C8 extra semantic notes (Part C) and parser notes (Part E).
+  1.2  Notes only, after executable validation (GenAI_Validation.md,
+       Prompt 7). NO production was changed.
+       C9 scanner notes: whole-word keyword matching; overlap of
+          <positive_const> and <number_const> (Part A.6 and Part E).
+
+
+------------------------------------------------------------------------------
+ PART A - LEXICAL LEVEL
+------------------------------------------------------------------------------
+
+A.1 Character classes
+
+<letter>        ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j"
+                  | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t"
+                  | "u" | "v" | "w" | "x" | "y" | "z"
+                  | "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J"
+                  | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T"
+                  | "U" | "V" | "W" | "X" | "Y" | "Z"
+<digit>         ::= "0" | <nonzero_digit>
+<nonzero_digit> ::= "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+
+A.2 Identifiers  (names of recipes and variables)
+
+<identifier>    ::= <name>
+                    CONSTRAINT: the text of <name> must not be equal to any
+                    <keyword>  (e.g. "if", "for" and "list" are not identifiers)
+<name>          ::= <letter> | <letter> <name_tail>
+<name_tail>     ::= <name_char> | <name_char> <name_tail>
+<name_char>     ::= <letter> | <digit> | "_"
+
+A.3 Constants
+
+<positive_const> ::= <nonzero_digit> | <nonzero_digit> <digit_seq>
+<number_const>   ::= "0" | <positive_const>
+<digit_seq>      ::= <digit> | <digit> <digit_seq>
+
+<string_const>  ::= <dquote> <dquote>
+                  | <dquote> <string_body> <dquote>
+<string_body>   ::= <string_char> | <string_char> <string_body>
+<string_char>   ::= any printable character other than <dquote> and <newline>
+<dquote>        ::= '"'
+
+A.4 Keywords (reserved)
+
+<keyword>       ::= "recipe" | "let" | "number" | "list" | "of"
+                  | "if" | "else" | "while" | "for" | "from" | "to"
+                  | "read" | "show" | "and" | "or" | "not"
+
+A.5 Operators and separators (token list)
+
+  arithmetic : "+"  "-"  "*"  "/"  "%"
+  assignment : "="
+  separators : "("  ")"  "["  "]"  "{"  "}"  ";"  ":"  ","
+
+<assign_op>     ::= "="
+<rel_op>        ::= "<" | "<=" | ">" | ">=" | "==" | "!="
+
+A.6 Whitespace and comments (ignored by the scanner)
+
+<space>         ::= " "
+<tab>           ::= the TAB character (ASCII 9)
+<newline>       ::= the LF character (ASCII 10) | CR LF (ASCII 13 10)
+<whitespace>    ::= <space> | <tab> | <newline>
+
+<comment>       ::= "#" <newline>
+                  | "#" <comment_body> <newline>
+<comment_body>  ::= <comment_char> | <comment_char> <comment_body>
+<comment_char>  ::= any character other than <newline>
+                    (a comment on the last line of a file may end at
+                     end-of-file instead of <newline>)
+
+Lexical rules:
+  - Tokens are separated by whitespace or by separators/operators.
+  - The scanner always takes the longest match ("<=" is one token).
+  - Keywords are case-sensitive and written in lower case.
+  - "/" is integer division; "%" is the remainder.
+  - Numbers are non-negative; a negative value uses unary minus.
+  - Keywords are recognised only as WHOLE words: "iffy", "format" and
+    "toast" are identifiers, "if", "for" and "to" are keywords.
+  - Leading zeros are not allowed: "007" scans as the tokens 0 0 7 and is
+    rejected by the parser.
+
+
+------------------------------------------------------------------------------
+ PART B - SYNTACTIC LEVEL
+------------------------------------------------------------------------------
+
+B.1 Program structure
+
+<program>       ::= "recipe" <identifier> "{" <decl_list> <stmt_list> "}"
+
+B.2 Declarations (all declarations come before the statements)
+
+<decl_list>     ::= <declaration> | <declaration> <decl_list>
+<declaration>   ::= "let" <identifier> ":" <type> ";"
+
+<type>          ::= <simple_type> | <array_type>
+<simple_type>   ::= "number"
+<array_type>    ::= "list" "of" "number" "[" <positive_const> "]"
+
+B.3 Statements
+
+<stmt_list>     ::= <statement> | <statement> <stmt_list>
+
+<statement>     ::= <assign_stmt>
+                  | <if_stmt>
+                  | <for_stmt>
+                  | <while_stmt>
+                  | <read_stmt>
+                  | <show_stmt>
+
+B.3.1 Assignment
+
+<assign_stmt>   ::= <variable> <assign_op> <expression> ";"
+
+<variable>      ::= <identifier>
+                  | <identifier> "[" <expression> "]"
+
+B.3.2 Conditional
+
+<if_stmt>       ::= "if" <condition> "{" <stmt_list> "}"
+                  | "if" <condition> "{" <stmt_list> "}"
+                    "else" "{" <stmt_list> "}"
+
+B.3.3 Loops
+
+<for_stmt>      ::= "for" <identifier> "from" <expression> "to" <expression>
+                    "{" <stmt_list> "}"
+
+<while_stmt>    ::= "while" <condition> "{" <stmt_list> "}"
+
+(The "for" loop is inclusive on both bounds and increments by 1.)
+
+B.3.4 Input / Output
+
+<read_stmt>     ::= "read" <variable> ";"
+
+<show_stmt>     ::= "show" <output_list> ";"
+<output_list>   ::= <output_item> | <output_item> "," <output_list>
+<output_item>   ::= <expression> | <string_const>
+
+B.4 Expressions
+
+<expression>    ::= <term>
+                  | <expression> "+" <term>
+                  | <expression> "-" <term>
+
+<term>          ::= <factor>
+                  | <term> "*" <factor>
+                  | <term> "/" <factor>
+                  | <term> "%" <factor>
+
+<factor>        ::= <number_const>
+                  | <variable>
+                  | "(" <expression> ")"
+                  | "-" <factor>
+
+B.5 Conditions
+
+<condition>     ::= <and_cond>
+                  | <condition> "or" <and_cond>
+
+<and_cond>      ::= <not_cond>
+                  | <and_cond> "and" <not_cond>
+
+<not_cond>      ::= <relation>
+                  | "not" <not_cond>
+                  | "(" <condition> ")"
+
+<relation>      ::= <expression> <rel_op> <expression>
+
+(Precedence, lowest to highest: or, and, not, relation.
+ Arithmetic precedence: unary minus, then * / %, then + -.)
+
+
+------------------------------------------------------------------------------
+ PART C - SEMANTIC NOTES (informal, not part of the BNF)
+------------------------------------------------------------------------------
+
+  1. Every variable must be declared before use; names are unique per recipe.
+  2. Array indexes start at 0 and must lie in 0 .. N-1 (N = declared size).
+  3. An array name WITHOUT an index is not a valid operand, assignment target,
+     "read" target or "show" item (the grammar cannot express this; the
+     semantic analyser must reject e.g.  x = grams;  read grams;).
+  4. Division and remainder by zero are runtime errors.
+  5. "read" stores an integer typed by the user; "show" prints its items
+     separated by a single space, followed by a newline.
+  6. The loop variable of "for" must be a declared simple "number" variable.
+     Its bounds are evaluated once, before the first iteration. The body
+     must not assign to the loop variable.
+  7. A "number" variable has no defined value until assigned or read;
+     using it earlier is an error.
+  8. "show" with an expression prints its integer value.
+
+
+------------------------------------------------------------------------------
+ PART D - COMPLETE SAMPLE PROGRAM
+------------------------------------------------------------------------------
+
+recipe CaesarSalad {
+    let servings : number;
+    let i        : number;
+    let total    : number;
+    let grams    : list of number[3];
+    let kcal100  : list of number[3];
+
+    read servings;
+    grams[0] = 80;  kcal100[0] = 17;     # lettuce
+    grams[1] = 40;  kcal100[1] = 400;    # parmesan
+    grams[2] = 50;  kcal100[2] = 380;    # croutons
+
+    total = 0;
+    for i from 0 to 2 {
+        total = total + grams[i] * kcal100[i] / 100;
+    }
+    total = total * servings;
+
+    if total > 800 {
+        show "Heavy meal:", total, "kcal";
+    } else {
+        show "Light meal:", total, "kcal";
+    }
+}
+
+
+------------------------------------------------------------------------------
+ PART E - PARSER NOTES
+------------------------------------------------------------------------------
+
+  1. <expression>, <term> and <condition> are LEFT-recursive. This gives
+     correct left associativity (a - b - c = (a - b) - c) and suits
+     bottom-up (LR / yacc / bison) parsers. A top-down (LL / recursive
+     descent) parser must rewrite them as loops, e.g.
+        <expression> ::= <term> { ("+" | "-") <term> }.
+  2. The token "(" can start either a parenthesised condition or a
+     parenthesised expression inside a <relation>:
+        not (a > 1 or b > 2)        <- condition
+        (a + b) > 3                 <- relation
+     A top-down parser needs backtracking or an unbounded lookahead to
+     tell them apart; an LR parser resolves it when it reaches the first
+     ")" or relational operator. The grammar is unambiguous.
+  3. The two alternatives of <if_stmt> share a prefix; left-factor them
+     when writing a recursive-descent parser. There is no dangling-else
+     problem because every block is delimited by braces.
+
+  4. SCANNER NOTE: the text "5" is derivable both as <positive_const> and as
+     <number_const> (the latter includes the former). A scanner returns one
+     integer token; the parser context then decides: inside "[ ]" of an
+     <array_type> only <positive_const> is allowed, so "[0]" is rejected
+     (context-sensitive scanning, or a check "size >= 1" after scanning).
+  5. HISTORICAL VALIDATION: GenAI_Validation.md describes an LALR(1)
+     parser and reports no conflicts and successful positive/negative
+     checks. The referenced chefscript_parser.py and validate_chefscript.py
+     files are not included in this folder; those execution results cannot
+     be reproduced from the files supplied here.
+
+==============================================================================
+ END OF BNF  (version 1.2)
+==============================================================================
